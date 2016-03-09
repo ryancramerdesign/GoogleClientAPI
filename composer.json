@@ -4,6 +4,7 @@
   "description": "Google Client library for use with ProcessWire CMS/CMF",
   "keywords": [ "google", "client", "calendar", "processwire" ],
   "homepage": "https://processwire.com",
+  "license": "MPL-2.0",
   "authors": [
     {
       "name": "Ryan Cramer",
