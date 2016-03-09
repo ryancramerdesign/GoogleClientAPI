@@ -1,0 +1,341 @@
+<?php namespace ProcessWire;
+
+/**
+ * Class GoogleClientAPI
+ *
+ * @property string $accessToken JSON access token data
+ * @property string $refreshToken refresh token
+ * @property string $authConfig JSON client secret data
+ * @property string $authConfigHash Hash of authConfig for detecting changes
+ * @property string $redirectURL 
+ * @property string $applicationName
+ * @property array $scopes
+ * 
+ * 
+ */
+class GoogleClientAPI extends WireData implements Module, ConfigurableModule {
+	
+	public static function getModuleInfo() {
+		return array(
+			'title' => 'Google Client API',
+			'summary' => 'Connects ProcessWire with the Google Client Library and manages authentication.',
+			'version' => 1, 
+			'license' => 'MPL 2.0',
+			'author' => 'Ryan Cramer',
+			'icon' => 'google',
+		);
+	}
+
+	const debug = false;
+
+	/**
+	 * Name for log file
+	 * 
+	 * @var string
+	 * 
+	 */
+	protected $logName = 'google-client';
+	
+	/**
+	 * Construct by setup of default config values
+	 * 
+	 */
+	public function __construct() {
+		$this->set('applicationName', '');
+		$this->set('accessToken', '');	
+		$this->set('refreshToken', '');
+		$this->set('authConfig', '');
+		$this->set('authConfigHash', '');
+		$this->set('redirectURL', '');
+		$this->set('scopes', array());
+	}
+
+	/**
+	 * Initialize the module
+	 * 
+	 */
+	public function init() {
+		if(!class_exists("\\Google_Client")) {
+			$this->error(
+				"GoogleClientAPI requires that the Google API PHP Client be added to your /composer.json file - " . 
+				"<a target='_blank' href='https://github.com/google/google-api-php-client/blob/master/README.md'>See README</a>",
+				Notice::allowMarkup
+			);
+		} else {
+			$this->set('scopes', array(\Google_Service_Calendar::CALENDAR_READONLY));
+		}
+	}
+
+	/**
+	 * Get the Google Client
+	 * 
+	 * @param array $options
+	 * @return bool|\Google_Client
+	 * @throws \Google_Exception
+	 * 
+	 */
+	public function getClient($options = array()) {
+	
+		if(!$this->authConfig) return false;
+		
+		$defaults = array(
+			'applicationName' => $this->applicationName,
+			'scopes' => $this->scopes, 
+			'accessType' => 'offline',
+			'redirectUri' => $this->redirectURL, 
+		);
+		
+		$options = array_merge($defaults, $options);
+		
+		$client = new \Google_Client();
+		$client->setApplicationName($options['applicationName']);
+		$client->setScopes(implode(' ', $options['scopes']));
+		$client->setAuthConfig(json_decode($this->authConfig, true));
+		$client->setAccessType($options['accessType']);
+		$client->setRedirectUri($options['redirectUri']);
+		
+		$this->setAccessToken($client);
+		
+		return $client;
+	}
+
+	/**
+	 * Setup the access token and refresh when needed
+	 * 
+	 * @param \Google_Client $client
+	 * @return bool
+	 * 
+	 */
+	protected function setAccessToken(\Google_Client $client) {
+		
+		if(!$this->accessToken && $this->wire('process')->className() == 'ProcessModule') {
+			// module config, request authorization
+			if(!$this->wire('user')->isSuperuser()) return false;
+			$code = $this->wire('input')->get('code');
+			if(empty($code)) {
+				// Request authorization from the user
+				$authURL = str_replace('approval_prompt=auto', 'approval_prompt=force', $client->createAuthUrl());
+				if($authURL) $this->wire('session')->redirect($authURL);
+				return false;
+			} else {
+				// Exchange auth code for an access token
+				$this->accessToken = $client->authenticate($code);
+				if(self::debug) $this->message("client->authenticate($code) == $this->accessToken");
+				if($this->accessToken) {
+					$this->saveAccessToken();
+					$this->wire('session')->message($this->_('Saved Google authentication credentials'));
+					$this->wire('session')->redirect($this->redirectURL);
+					return false;
+				}
+			}
+		}
+
+		$client->setAccessToken($this->accessToken);
+		if(!$this->refreshToken) $this->saveAccessToken();
+		
+		if($client->isAccessTokenExpired()) {
+			$refreshToken = $this->getRefreshToken();
+			if($refreshToken) {
+				$client->refreshToken($refreshToken);
+				$this->accessToken = $client->getAccessToken();
+				if($this->accessToken) $this->saveAccessToken();
+			} else {
+				$this->error('Unable to get refresh token');
+				return false;
+			}
+		}
+		
+		return true;
+	}
+
+	/**
+	 * Get the refresh token
+	 * 
+	 * @return string
+	 * 
+	 */
+	protected function getRefreshToken() {
+		
+		$refreshToken = '';
+		
+		if($this->refreshToken) {
+			if(strpos($this->refreshToken, '{') === 0) {
+				// json encoded (legacy, can eventually be removed)
+				$token = json_decode($this->refreshToken, true);
+				if(isset($token['refresh_token'])) $refreshToken = $token['refresh_token'];	
+			} else {
+				// not encoded
+				$refreshToken = $this->refreshToken;
+			}
+			
+		} else if($this->accessToken) {
+			// attempt to get from accessToken
+			$token = is_array($this->accessToken) ? $this->accessToken : json_decode($this->accessToken, true);
+			if($token && isset($token['refresh_token'])) {
+				$refreshToken = $token['refresh_token'];
+			}
+			
+		} else {
+			// unable to get it
+		}
+		
+		return $refreshToken;
+	}
+
+	/**
+	 * Save the access token to module config data
+	 * 
+	 */
+	protected function saveAccessToken() {
+		$configData = $this->wire('modules')->getModuleConfigData($this);
+		$configData['accessToken'] = $this->accessToken;
+		$configData['authConfigHash'] = md5($this->authConfig);
+		if(empty($configData['refreshToken'])) {
+			$configData['refreshToken'] = $this->getRefreshToken();
+		}
+		$this->wire('modules')->saveModuleConfigData($this, $configData);
+		if(self::debug) {
+			$this->message('saveModuleConfigData');
+			$this->message($configData);
+		}
+	}
+
+	/**
+	 * Get events for given calendar ID (example usage of Google Client)
+	 * 
+	 * Default behavior is to return the next 10 upcoming events. Use the
+	 * $options argument to adjust this behavior. 
+	 * 
+	 * USAGE EXAMPLE
+	 * =============
+	 * $events = $google->getCalendarEvents($calendarID);
+	 * foreach($events->getItems() as $event) {
+	 *   $start = $event->start->dateTime;
+	 *   if(empty($start)) $start = $event->start->date;
+	 *   echo sprintf("<li>%s (%s)</li>", $event->getSummary(), $start);
+	 * }
+	 * 
+	 * @param string $calendarID
+	 * @param array $options One or more of the following options:
+	 *   maxResults: Max number of results to return (default=10)
+	 *   orderBy: Field to order events by (default=startTime)
+	 *   timeMin: Events starting after this date/time (default=now)
+	 *   timeMax: Events up to this date/time (default=null)
+	 *   q: Text string to search for
+	 * @return \Google_Service_Calendar_Events|bool
+	 * 
+	 */
+	public function getCalendarEvents($calendarID = '', array $options = array()) {
+		
+		if(empty($calendarID)) $calendarID = 'primary';
+
+		$defaults = array(
+			'maxResults' => 10,
+			'orderBy' => 'startTime',
+			'singleEvents' => true,
+			'timeMin' => date('c'),
+			'q' => '',
+		);
+
+		$options = array_merge($defaults, $options);
+
+		try {
+			$client = $this->getClient();
+			$service = new \Google_Service_Calendar($client);
+		} catch(\Exception $e) {
+			$this->log($e->getMessage());
+			$this->error($e->getMessage());
+			return false;
+		}
+			
+		// make sure times are in format google expects
+		foreach(array('timeMin', 'timeMax') as $t) {
+			if(!isset($options[$t])) continue;
+			$v = $options[$t];
+			if(is_string($v)) $v = ctype_digit("$v") ? (int) $v : strtotime($v);
+			if(is_int($v)) $options[$t] = date('c', $v);
+		}
+	
+		// return the events
+		return $service->events->listEvents($calendarID, $options);
+	}
+
+	/**
+	 * Module configuration
+	 * 
+	 * @param InputfieldWrapper $form
+	 * 
+	 */
+	public function getModuleConfigInputfields(InputfieldWrapper $form) {
+		
+		$modules = $this->wire('modules');
+		$session = $this->wire('session');
+		$input = $this->wire('input');
+		$redirectURL = $this->redirectURL ? $this->redirectURL : $input->httpUrl(true);
+	
+		$f = $modules->get('InputfieldText');
+		$f->attr('name', 'applicationName');
+		$f->label = $this->_('Application name');
+		$f->attr('value', $this->applicationName);
+		$f->required = true;
+		$form->add($f);
+		
+		$f = $modules->get('InputfieldTextarea');
+		$f->attr('name', 'authConfig');
+		$f->label = $this->_('Authentication config / client secret JSON');
+		$f->description = $this->_('Paste in the client secret JSON provided to you by Google.');
+		$f->attr('value', $this->authConfig);
+		$f->required = true;
+		$f->collapsed = Inputfield::collapsedPopulated;
+		$form->add($f);
+	
+		if(self::debug) {
+			$f = $modules->get('InputfieldTextarea');
+			$f->attr('name', '_accessToken');
+			$f->label = 'Access Token (populated automatically)';
+			$f->attr('value', is_array($this->accessToken) ? json_encode($this->accessToken) : $this->accessToken);
+			$f->collapsed = Inputfield::collapsedYes;
+			$form->add($f);
+
+			$f = $modules->get('InputfieldTextarea');
+			$f->attr('name', '_refreshToken');
+			$f->label = 'Refresh Token (populated automatically)';
+			$f->attr('value', $this->getRefreshToken());
+			$f->collapsed = Inputfield::collapsedYes;
+			$form->add($f);
+		}
+	
+		$this->saveAccessToken();
+	
+		if($this->authConfig && md5($this->authConfig) != $this->authConfigHash) {
+			// auth config has been changed
+			$this->warning("authConfig has been changed");
+			$session->setFor($this, 'authConfigTest', 1);
+		}
+		
+		if(!count($_POST) && ($input->get('code') || $session->getFor($this, 'authConfigTest'))) {
+			$session->setFor($this, 'authConfigTest', null);
+			$test = json_decode($this->authConfig, true);
+			if(is_array($test) && count($test)) {
+				$this->accessToken = '';
+				$this->getClient();
+				// $this->message("Setup new access token");
+			} else {
+				$this->error('Authentication config did not validate as JSON, please check it');
+				$this->warning($this->authConfig);
+			}
+		}
+
+		$f = $modules->get('InputfieldText');
+		$f->attr('name', 'redirectURL');
+		$f->label = $this->_('Redirect URL (auto-generated)');
+		$f->description = $this->_('Please provide this URL to Google as part of your API configuration.');
+		$f->attr('value', $redirectURL);
+		$f->notes = $this->_('Note: this is generated automatically and you should not change it.');
+		$form->add($f);
+	}
+
+
+}
+
+
