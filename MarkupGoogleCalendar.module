@@ -1,0 +1,311 @@
+<?php namespace ProcessWire;
+
+/**
+ * Google Calendar Markup for ProcessWire
+ * 
+ * Renders a calendar with data from google. This module demonstrates use of
+ * and requires the GoogleClientAPI module, which must be installed and configured
+ * prior to using this module. 
+ * 
+ * See the _mgc-event.php file which is what handles the output markup. You should
+ * copy this file to /site/templates/_mgc-event.php and modify it as you see fit. 
+ * If you do not copy to your /site/templates/ directory then it will use the 
+ * default one in the module directory.
+ * 
+ * Please note that all render methods cache output by default for 1 hour. You can 
+ * change this by adjusting the $cacheExpire property of the module. 
+ * 
+ * USAGE
+ * =====
+ * $cal = $modules->get('MarkupGoogleCalendar');
+ * $cal->calendarID = 'your-calendar-id'; // Your Google Calendar ID (default=primary)
+ * $cal->cacheExpire = 3600; // how many seconds to cache output (default=3600)
+ * $cal->maxResults = 100; // maximum number of results to render (default=100)
+ * 
+ * echo $cal->renderMonth(); // render events for this month
+ * echo $cal->renderMonth($month, $year); // render events for given month
+ * echo $cal->renderDay(); // render events for today
+ * echo $cal->renderDay($day, $month, $year); // render events for given day
+ * echo $cal->renderUpcoming(10); // render next 10 upcoming events
+ * echo $cal->renderRange($timeMin, $timeMax); // render events between given min/max dates/times
+ * 
+ * SETTINGS
+ * ========
+ * Any of the following settings can be set directly to the module, or passed
+ * in via the $options array that any of the render() methods accepts. 
+ * 
+ * @property string $calendarID The Google calendar ID (default=primary)
+ * @property string $dateFormat The date() or strftime() date format (default='F j, Y')
+ * @property string $timeFormat The date() or strftime() time format (default='g:i a');
+ * @property int $cacheExpire How many seconds to cache rendered markup (default=3600)
+ * @property string $orderBy Event property to order results by (default=startTime)
+ * @property int $maxResults Maximum number of events to find/render (default=100)
+ * @property string $eventTemplate PHP template file to use for render (default=/path/to/site/templates/_mgc-event.php)
+ * 
+ */
+
+class MarkupGoogleCalendar extends WireData implements Module {
+
+	public static function getModuleInfo() {
+		return array(
+			'title' => 'Google Calendar Markup',
+			'summary' => 'Renders a calendar with data from Google',
+			'version' => 1,
+			'license' => 'MPL 2.0',
+			'author' => 'Ryan Cramer',
+			'icon' => 'google',
+			'requires' => 'GoogleClientAPI, PHP>=5.4.0, ProcessWire>=3.0.10',
+		);
+	}
+	
+	/**
+	 * Construct and set default config values
+	 * 
+	 */
+	public function __construct() {
+		
+		$this->set('calendarID', 'primary');
+		$this->set('dateFormat', $this->_('F j, Y')); // default date format
+		$this->set('timeFormat', $this->_('g:i a')); // default time format
+		$this->set('cacheExpire', 3600);
+		$this->set('orderBy', 'startTime');
+		$this->set('maxResults', 100);
+		
+		$name = '_mgc-event.php';		
+		$file = $this->wire('config')->paths->templates . $name;
+		if(!is_file($file)) $file = $this->wire('config')->paths->MarkupGoogleCalendar . $name;
+		$this->set('eventTemplate', $file);
+		
+		parent::__construct();
+	}
+
+	/**
+	 * Render a single event
+	 * 
+	 * @param \Google_Service_Calendar_Event $event
+	 * @param array $options
+	 * @return string
+	 * @throws WireException
+	 * 
+	 */
+	public function renderEvent(\Google_Service_Calendar_Event $event, array $options = array()) {
+		
+		$sanitizer = $this->wire('sanitizer');
+		
+		if($event->start->dateTime) {
+			// date and time
+			$startDate = wireDate($this->dateFormat, $event->start->dateTime);
+			$startTime = wireDate($this->timeFormat, $event->start->dateTime);
+			$startTS = strtotime($event->start->dateTime);
+		} else {
+			// date only
+			$startDate = wireDate($this->dateFormat, $event->start->date);
+			$startTS = strtotime($event->start->date);
+			$startTime = '';
+		}
+
+		if($event->end->dateTime) {
+			// date and time
+			$endDate = wireDate($this->dateFormat, $event->end->dateTime);
+			$endTime = wireDate($this->timeFormat, $event->end->dateTime);
+			$endTS = strtotime($event->end->dateTime);
+		} else if($event->end->date) {
+			// date only
+			$endDate = wireDate($this->dateFormat, $event->end->date);
+			$endTS = strtotime($event->end->date);
+			$endTime = '';
+		}
+
+		// if startDate and endDate are the same, don't show endDate
+		if($endDate == $startDate) {
+			$endDate = '';
+			if($endTime == $startTime) $endTime = '';
+		}
+
+		$startDateTime = trim("$startDate $startTime");
+		$endDateTime = trim("$endDate $endTime");
+		$dateRange = ($startDateTime && $endDateTime ? "$startDateTime – $endDateTime" : $startDateTime);
+		
+		// prepare variables we will use for output
+		$vars = array(
+			'event' => $event, 
+			'startTS' => $startTS, 
+			'startDate' => $startDate,
+			'startTime' => $startTime,
+			'startDateTime' => $startDateTime, 
+			'endTS' => $endTS, 
+			'endDate' => $endDate,
+			'endTime' => $endTime, 
+			'endDateTime' => $endDateTime,
+			'dateRange' => $dateRange, 
+			'summary' => $sanitizer->entities($event->getSummary()),
+			'description' => $sanitizer->entities($event->getDescription()),
+			'location' => $sanitizer->entities($event->getLocation()),
+			'htmlLink' => $sanitizer->entities($event->getHtmlLink()),
+		);
+		
+		$eventTemplate = isset($options['eventTemplate']) ? $options['eventTemplate'] : $this->eventTemplate;
+		
+		return $this->wire('files')->render($eventTemplate, $vars);
+	}
+
+	/**
+	 * Render the given events
+	 * 
+	 * @param \Google_Service_Calendar_Events $events
+	 * @param array $options
+	 * @return string Returns markup, or blank string if no events to render
+	 * 
+	 */
+	public function renderEvents(\Google_Service_Calendar_Events $events, array $options = array()) {
+		$out = '';
+		foreach($events->getItems() as $event) {
+			$out .= $this->renderEvent($event, $options);
+		}
+		return $out; 
+	}
+
+	/**
+	 * Render events for the given month and year
+	 * 
+	 * If month or year are omitted or 0, it renders events for the current month.
+	 * 
+	 * @param int $month
+	 * @param int $year
+	 * @param array $options
+	 * @return string
+	 * 
+	 */
+	public function renderMonth($month = 0, $year = 0, array $options = array()) {
+		
+		if(!$month) {
+			$timeMin = strtotime(date('Y-m') . '-01 00:00');
+		} else {
+			$timeMin = strtotime("$year-$month-01 00:00");
+		}
+		
+		$timeMax = strtotime("+1 MONTH", $timeMin) - 1;
+	
+		return $this->renderRange($timeMin, $timeMax, $options);
+	}
+
+	/**
+	 * Render events for the given day (in month and year)
+	 * 
+	 * If day, month or year are omitted or 0, it renders events for today. 
+	 * 
+	 * @param int $day
+	 * @param int $month
+	 * @param int $year
+	 * @param array $options
+	 * @return string
+	 * 
+	 */
+	public function renderDay($day = 0, $month = 0, $year = 0, array $options = array()) {
+		
+		if(!$day || !$month || !$year) {
+			$timeMin = strtotime(date('Y-m-d') . ' 00:00');
+		} else {
+			$timeMin = strtotime("$year-$month-$day 00:00");
+		}
+
+		$timeMax = strtotime("+1 DAY", $timeMin) - 1;
+
+		return $this->renderRange($timeMin, $timeMax, $options);
+	}
+	
+	/**
+	 * Render events for the given range of times
+	 *
+	 * @param int|string $timeMin
+	 * @param int|string $timeMax
+	 * @param array $options
+	 * @return string
+	 *
+	 */
+	public function renderRange($timeMin, $timeMax, array $options = array()) {
+
+		if(!ctype_digit("$timeMin")) $timeMin = strtotime($timeMin);
+		if(!ctype_digit("$timeMax")) $timeMax = strtotime($timeMax);
+
+		$defaults = array(
+			'timeMin' => (int) $timeMin,
+			'timeMax' => (int) $timeMax,
+		);
+
+		$options = array_merge($defaults, $options);
+		$cacheExpire = isset($options['cacheExpire']) ? $options['cacheExpire'] : $this->cacheExpire;
+		$cacheKey = $this->makeCacheKey('range', $options);
+		$out = $cacheExpire ? $this->wire('cache')->getFor($this, $cacheKey, $cacheExpire) : null;
+
+		if(is_null($out)) {
+			$out = $this->renderEvents($this->findEvents($options), $options);
+			if($cacheExpire) $this->wire('cache')->saveFor($this, $cacheKey, $out, $cacheExpire);
+		}
+
+		return $out;
+	}
+
+	/**
+	 * Render upcoming events
+	 * 
+	 * @param int $maxResults Maximum number of events to include
+	 * @param array $options
+	 * @return string
+	 * 
+	 */
+	public function renderUpcoming($maxResults = 10, array $options = array()) {
+		
+		$cacheExpire = isset($options['cacheExpire']) ? $options['cacheExpire'] : $this->cacheExpire;
+		$cacheKey = $this->makeCacheKey("upcoming$maxResults", $options);
+		$out = $cacheExpire ? $this->wire('cache')->getFor($this, $cacheKey, $cacheExpire) : null;
+	
+		if(is_null($out)) {
+			$options['maxResults'] = $maxResults;
+			if(empty($options['timeMin'])) $options['timeMin'] = time();
+			$out = $this->renderEvents($this->findEvents($options), $options);
+			if($cacheExpire) $this->wire('cache')->saveFor($this, $cacheKey, $out, $cacheExpire);
+		}
+	
+		return $out; 
+	}
+
+	/**
+	 * Find calendar events
+	 * 
+	 * @param array $options
+	 * @return \Google_Service_Calendar_Events 
+	 * 
+	 */
+	public function findEvents(array $options = array()) {
+		
+		$google = $this->wire('modules')->get('GoogleClientAPI');
+
+		$defaults = array(
+			'maxResults' => $this->maxResults,
+			'orderBy' => $this->orderBy,
+		);
+		
+		$options = array_merge($defaults, $options);
+		$calendarID = isset($options['calendarID']) ? $options['calendarID'] : $this->calendarID; 
+		$events = $google->getCalendarEvents($calendarID, $options);
+		
+		return $events;
+	}
+
+	/**
+	 * Make a unique key to use for cache
+	 * 
+	 * @param $name
+	 * @param array $options
+	 * @return string
+	 * 
+	 */
+	protected function makeCacheKey($name, array $options = array()) {
+		return md5(
+			$name . '-' . 
+			print_r($options, true) . 
+			print_r($this->getArray(), true)
+		);
+	}
+}

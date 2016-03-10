@@ -1,7 +1,9 @@
 <?php namespace ProcessWire;
 
 /**
- * Class GoogleClientAPI
+ * Google Client API 
+ * 
+ * This module connects ProcessWire with the Google Client Library and manages authentication.
  *
  * @property string $accessToken JSON access token data
  * @property string $refreshToken refresh token
@@ -241,6 +243,7 @@ class GoogleClientAPI extends WireData implements Module, ConfigurableModule {
 
 		try {
 			$client = $this->getClient();
+			if(!$client) throw new WireException("The GoogleClientAPI module is not yet configured");
 			$service = new \Google_Service_Calendar($client);
 		} catch(\Exception $e) {
 			$this->log($e->getMessage());

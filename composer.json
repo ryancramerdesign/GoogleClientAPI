@@ -1,7 +1,7 @@
 {
   "name": "processwire/google-client-api",
   "type": "pw-module",
-  "description": "Google Client library for use with ProcessWire CMS/CMF",
+  "description": "Google Client library for use with ProcessWire CMS/CMF + module demonstrating usage (MarkupGoogleCalendar).",
   "keywords": [ "google", "client", "calendar", "processwire" ],
   "homepage": "https://processwire.com",
   "license": "MPL-2.0",
