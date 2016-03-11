@@ -44,8 +44,8 @@ Renders a calendar with data from google. This module demonstrates use of
 and requires the GoogleClientAPI module, which must be installed and configured
 prior to using this module. 
 
-See the "_mgc-event.php" file which is what handles the output markup. You should
-copy this file to /site/templates/_mgc-event.php and modify it as you see fit. 
+See the `_mgc-event.php` file which is what handles the output markup. You should
+copy this file to `/site/templates/_mgc-event.php` and modify it as you see fit. 
 If you do not copy to your /site/templates/ directory then it will use the 
 default one in the module directory.
 
@@ -55,6 +55,7 @@ change this by adjusting the $cacheExpire property of the module.
 ## Usage
 
 `````````````````	
+<?php
 $cal = $modules->get('MarkupGoogleCalendar');
 $cal->calendarID = 'your-calendar-id'; // Your Google Calendar ID (default=primary)
 $cal->cacheExpire = 3600; // how many seconds to cache output (default=3600)
