@@ -14,7 +14,7 @@
     }
   ],
   "require": {
-    "hari/pw-module": "dev-master",
+    "hari/pw-module": "~1.0",
     "google/apiclient": "^2.0.0@RC"
   }
 }
