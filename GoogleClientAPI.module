@@ -31,14 +31,6 @@ class GoogleClientAPI extends WireData implements Module, ConfigurableModule {
 	const debug = false;
 
 	/**
-	 * Name for log file
-	 * 
-	 * @var string
-	 * 
-	 */
-	protected $logName = 'google-client';
-	
-	/**
 	 * Construct by setup of default config values
 	 * 
 	 */
@@ -246,8 +238,7 @@ class GoogleClientAPI extends WireData implements Module, ConfigurableModule {
 			if(!$client) throw new WireException("The GoogleClientAPI module is not yet configured");
 			$service = new \Google_Service_Calendar($client);
 		} catch(\Exception $e) {
-			$this->log($e->getMessage());
-			$this->error($e->getMessage());
+			$this->error($e->getMessage(), Notice::log);
 			return false;
 		}
 			
