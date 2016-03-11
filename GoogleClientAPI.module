@@ -21,7 +21,7 @@ class GoogleClientAPI extends WireData implements Module, ConfigurableModule {
 		return array(
 			'title' => 'Google Client API',
 			'summary' => 'Connects ProcessWire with the Google Client Library and manages authentication.',
-			'version' => 1, 
+			'version' => 200, 
 			'license' => 'MPL 2.0',
 			'author' => 'Ryan Cramer',
 			'icon' => 'google',
