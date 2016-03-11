@@ -1,16 +1,26 @@
-# Google Client API and Markup Google Calendar modules
+# Google Client and Calendar modules
 
-## Requirements
+## About these modules
+
+This package includes two modules: GoogleClientAPI and MarkupGoogleCalendar.
+The GoogleClientAPI is the driver here, while the MarkupGoogleCalendar
+module is here to serve as a demonstration of GoogleClientAPI. The GoogleClientAPI 
+module must be installed and configured before using the MarkupGoogleCalendar module.
+
+These modules are also created as a demonstration for installation of modules via 
+Composer. In this case, the modules require installation via Composer because of 
+external dependencies available through Packagist, though we'll be adding support 
+for other installation methods soon. 
+
+### Requirements
 
 - ProcessWire 3.0.10 or newer
 - PHP 5.4 or newer
 - Composer
 
-## Google Client API module
+----------------------
 
-This module is also created as a demonstration for installation of modules via Composer.
-In this case, this module requires installation via Composer since it has external 
-dependencies, though we'll be adding support for other installation methods soon. 
+## Google Client API module
 
 ### Installation
 
@@ -28,7 +38,7 @@ to do this will be posted shortly at https://processwire.com/blog/.
 
 ----------------------
 
-# Markup Google Calendar module for ProcessWire
+# Markup Google Calendar module
 
 Renders a calendar with data from google. This module demonstrates use of
 and requires the GoogleClientAPI module, which must be installed and configured
