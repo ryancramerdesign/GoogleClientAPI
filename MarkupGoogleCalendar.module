@@ -50,7 +50,7 @@ class MarkupGoogleCalendar extends WireData implements Module {
 		return array(
 			'title' => 'Google Calendar Markup',
 			'summary' => 'Renders a calendar with data from Google',
-			'version' => 1,
+			'version' => 2,
 			'license' => 'MPL 2.0',
 			'author' => 'Ryan Cramer',
 			'icon' => 'google',
@@ -92,28 +92,33 @@ class MarkupGoogleCalendar extends WireData implements Module {
 		
 		$sanitizer = $this->wire('sanitizer');
 		
-		if($event->start->dateTime) {
+		if($event->getStart()->dateTime) {
 			// date and time
-			$startDate = wireDate($this->dateFormat, $event->start->dateTime);
-			$startTime = wireDate($this->timeFormat, $event->start->dateTime);
-			$startTS = strtotime($event->start->dateTime);
+			$startDate = wireDate($this->dateFormat, $event->getStart()->dateTime);
+			$startTime = wireDate($this->timeFormat, $event->getStart()->dateTime);
+			$startTS = strtotime($event->getStart()->dateTime);
 		} else {
 			// date only
-			$startDate = wireDate($this->dateFormat, $event->start->date);
-			$startTS = strtotime($event->start->date);
+			$startDate = wireDate($this->dateFormat, $event->getStart()->date);
+			$startTS = strtotime($event->getStart()->date);
 			$startTime = '';
 		}
 
-		if($event->end->dateTime) {
+		if($event->getEnd()->dateTime) {
 			// date and time
-			$endDate = wireDate($this->dateFormat, $event->end->dateTime);
-			$endTime = wireDate($this->timeFormat, $event->end->dateTime);
-			$endTS = strtotime($event->end->dateTime);
-		} else if($event->end->date) {
+			$endDate = wireDate($this->dateFormat, $event->getEnd()->dateTime);
+			$endTime = wireDate($this->timeFormat, $event->getEnd()->dateTime);
+			$endTS = strtotime($event->getEnd()->dateTime);
+		} else if($event->getEnd()->date) {
 			// date only
-			$endDate = wireDate($this->dateFormat, $event->end->date);
-			$endTS = strtotime($event->end->date);
+			$endDate = wireDate($this->dateFormat, $event->getEnd()->date);
+			$endTS = strtotime($event->getEnd()->date);
 			$endTime = '';
+		} else {
+			// no end date/time
+			$endDate = '';
+			$endTime = '';
+			$endTS = 0;
 		}
 
 		// if startDate and endDate are the same, don't show endDate
@@ -224,6 +229,9 @@ class MarkupGoogleCalendar extends WireData implements Module {
 	 *
 	 */
 	public function renderRange($timeMin, $timeMax, array $options = array()) {
+		
+		/** @var WireCache $cache */
+		$cache = $this->wire('cache');
 
 		if(!ctype_digit("$timeMin")) $timeMin = strtotime($timeMin);
 		if(!ctype_digit("$timeMax")) $timeMax = strtotime($timeMax);
@@ -236,11 +244,11 @@ class MarkupGoogleCalendar extends WireData implements Module {
 		$options = array_merge($defaults, $options);
 		$cacheExpire = isset($options['cacheExpire']) ? $options['cacheExpire'] : $this->cacheExpire;
 		$cacheKey = $this->makeCacheKey('range', $options);
-		$out = $cacheExpire ? $this->wire('cache')->getFor($this, $cacheKey, $cacheExpire) : null;
+		$out = $cacheExpire ? $this->cache->getFor($this, $cacheKey, $cacheExpire) : null;
 
 		if(is_null($out)) {
 			$out = $this->renderEvents($this->findEvents($options), $options);
-			if($cacheExpire) $this->wire('cache')->saveFor($this, $cacheKey, $out, $cacheExpire);
+			if($cacheExpire) $cache->saveFor($this, $cacheKey, $out, $cacheExpire);
 		}
 
 		return $out;
@@ -255,16 +263,18 @@ class MarkupGoogleCalendar extends WireData implements Module {
 	 * 
 	 */
 	public function renderUpcoming($maxResults = 10, array $options = array()) {
-		
+
+		/** @var WireCache $cache */
+		$cache = $this->wire('cache');
 		$cacheExpire = isset($options['cacheExpire']) ? $options['cacheExpire'] : $this->cacheExpire;
 		$cacheKey = $this->makeCacheKey("upcoming$maxResults", $options);
-		$out = $cacheExpire ? $this->wire('cache')->getFor($this, $cacheKey, $cacheExpire) : null;
+		$out = $cacheExpire ? $cache->getFor($this, $cacheKey, $cacheExpire) : null;
 	
 		if(is_null($out)) {
 			$options['maxResults'] = $maxResults;
 			if(empty($options['timeMin'])) $options['timeMin'] = time();
 			$out = $this->renderEvents($this->findEvents($options), $options);
-			if($cacheExpire) $this->wire('cache')->saveFor($this, $cacheKey, $out, $cacheExpire);
+			if($cacheExpire) $cache->saveFor($this, $cacheKey, $out, $cacheExpire);
 		}
 	
 		return $out; 
@@ -288,7 +298,7 @@ class MarkupGoogleCalendar extends WireData implements Module {
 		
 		$options = array_merge($defaults, $options);
 		$calendarID = isset($options['calendarID']) ? $options['calendarID'] : $this->calendarID; 
-		$events = $google->getCalendarEvents($calendarID, $options);
+		$events = $google->calendar($calendarID)->getEvents($options);
 		
 		return $events;
 	}

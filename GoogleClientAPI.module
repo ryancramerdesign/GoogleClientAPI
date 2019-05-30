@@ -3,15 +3,51 @@
 /**
  * Google Client API 
  * 
- * This module connects ProcessWire with the Google Client Library and manages authentication.
- *
+ * Connects ProcessWire with the Google Client Library and manages authentication.
+ * 
+ * Copyright 2019 by Ryan Cramer Design, LLC
+ * 
+ * The module gives you an easy connection to all of the Google API services to use
+ * according to Google's docs. However, it also comes with helper classes for working
+ * with Google Sheets and Google Calendar, which simplify some API tasks to be more
+ * like the ProcessWire API. 
+ * 
+ * This module also requires that the Google API PHP client library be installed,
+ * which can be installed via Composer or downloaded. See the README.md file for more.
+ * 
+ * Once installed, the module needs to be connected with a google account and given
+ * access to the scopes (services) you intend to use. 
+ * 
+ * USAGE
+ * ~~~~~
+ * // get the module
+ * $google = $modules->get('GoogleClientAPI');
+ * 
+ * // use ProcessWire GoogleSheets API
+ * $sheets = $google->sheets();
+ * 
+ * // use ProcessWire GoogleCalendar API
+ * $calendar = $google->calendar(); 
+ * 
+ * // use any other google services via the \Google_Client class
+ * $client = $google->getClient();
+ * ~~~~~
+ * 
+ * CONFIG SETTINGS
  * @property string $accessToken JSON access token data
  * @property string $refreshToken refresh token
  * @property string $authConfig JSON client secret data
  * @property string $authConfigHash Hash of authConfig for detecting changes
+ * @property int $configUserID ProccessWire user ID of user that $authConfig belongs to
  * @property string $redirectURL 
  * @property string $applicationName
  * @property array $scopes
+ * @property string $scopesHash
+ * 
+ * API PROPERTIES
+ * @property GoogleCalendar $calender
+ * @property GoogleSheets $sheets
+ * @property \Google_Client $client
  * 
  * 
  */
@@ -21,7 +57,7 @@ class GoogleClientAPI extends WireData implements Module, ConfigurableModule {
 		return array(
 			'title' => 'Google Client API',
 			'summary' => 'Connects ProcessWire with the Google Client Library and manages authentication.',
-			'version' => 200, 
+			'version' => 2, 
 			'license' => 'MPL 2.0',
 			'author' => 'Ryan Cramer',
 			'icon' => 'google',
@@ -35,13 +71,16 @@ class GoogleClientAPI extends WireData implements Module, ConfigurableModule {
 	 * 
 	 */
 	public function __construct() {
+		parent::__construct();
 		$this->set('applicationName', '');
 		$this->set('accessToken', '');	
 		$this->set('refreshToken', '');
 		$this->set('authConfig', '');
 		$this->set('authConfigHash', '');
+		$this->set('configUserID', 0); 
 		$this->set('redirectURL', '');
 		$this->set('scopes', array());
+		$this->set('scopesHash', '');
 	}
 
 	/**
@@ -50,14 +89,107 @@ class GoogleClientAPI extends WireData implements Module, ConfigurableModule {
 	 */
 	public function init() {
 		if(!class_exists("\\Google_Client")) {
+			$this->loadGoogleLibrary();
+		}
+		if(!count($this->scopes)) {
+			if(class_exists("\\Google_Client")) {
+				$this->set('scopes', array(\Google_Service_Calendar::CALENDAR_READONLY));
+			} else {
+				$this->set('scopes', array());
+			}
+		}
+		require_once(__DIR__ . '/GoogleClientClass.php'); 
+	}
+
+	/**
+	 * Find an load Google client library or report error on how to resolve
+	 * 
+	 */
+	protected function loadGoogleLibrary() {
+		$file = 'google-api-php-client/vendor/autoload.php';
+		$files = array(
+			$this->wire('config')->paths->site . $file, 
+			__DIR__ . "/$file"
+		);
+		$found = false;
+		foreach($files as $file) {
+			if(!file_exists($file)) continue;
+			require_once($file);
+			$found = true;
+			break;
+		}
+		if(!$found) {
 			$this->error(
-				"GoogleClientAPI requires that the Google API PHP Client be added to your /composer.json file - " . 
-				"<a target='_blank' href='https://github.com/google/google-api-php-client/blob/master/README.md'>See README</a>",
+				"GoogleClientAPI requires that the Google API PHP Client library be added to your <u>/composer.json</u> file " .
+				"OR downloaded, unzipped and placed in <u>/site/google-api-php-client/</u>. " .
+				"<a target='_blank' href='https://github.com/google/google-api-php-client/blob/master/README.md'>See README for further instructions</a>",
 				Notice::allowMarkup
 			);
-		} else {
-			$this->set('scopes', array(\Google_Service_Calendar::CALENDAR_READONLY));
 		}
+	}
+
+	/**
+	 * Get setting
+	 * 
+	 * @param string $key
+	 * @return mixed|null|GoogleClientClass
+	 * 
+	 */
+	public function get($key) {
+		if($key === 'calendar') return $this->calendar();
+		if($key === 'sheets') return $this->sheets();
+		if($key === 'client') return $this->getClient();
+		return parent::get($key);
+	}
+
+	/**
+	 * Set config setting
+	 * 
+	 * @param string $key
+	 * @param mixed $value
+	 * @return WireData|GoogleClientAPI
+	 * 
+	 */
+	public function set($key, $value) {
+		if($key === 'scopes') {
+			if(is_string($value)) {
+				$value = empty($value) ? array() : explode("\n", $value); 
+				foreach($value as $k => $v) $value[$k] = trim($v);
+			}
+		}
+		return parent::set($key, $value);
+	}
+	
+	/**
+	 * Return a new instance of the GoogleCalendar class
+	 *
+	 * (currently just a method for finding events, will expand upon it later)
+	 *
+	 * @param string $calendarId Optional calendar ID or shareable URL to use
+	 * @return GoogleCalendar
+	 *
+	 */
+	public function calendar($calendarId = '') {
+		require_once(__DIR__ . '/GoogleCalendar.php');
+		$calendar = new GoogleCalendar($this);
+		$this->wire($calendar);
+		if(!empty($calendarId)) $calendar->setCalendar($calendarId); 
+		return $calendar;
+	}
+
+	/**
+	 * Return a new instance of the GoogleSheets class
+	 *
+	 * @param string $spreadsheetId Optional spreadsheet ID or spreadsheet URL to use
+	 * @return GoogleSheets
+	 *
+	 */
+	public function sheets($spreadsheetId = '') {
+		require_once(__DIR__ . '/GoogleSheets.php');
+		$sheets = new GoogleSheets($this);
+		$this->wire($sheets);
+		if(!empty($spreadsheetId)) $sheets->setSpreadsheet($spreadsheetId); 
+		return $sheets;
 	}
 
 	/**
@@ -83,7 +215,7 @@ class GoogleClientAPI extends WireData implements Module, ConfigurableModule {
 		
 		$client = new \Google_Client();
 		$client->setApplicationName($options['applicationName']);
-		$client->setScopes(implode(' ', $options['scopes']));
+		$client->setScopes($options['scopes']);
 		$client->setAuthConfig(json_decode($this->authConfig, true));
 		$client->setAccessType($options['accessType']);
 		$client->setRedirectUri($options['redirectUri']);
@@ -104,21 +236,24 @@ class GoogleClientAPI extends WireData implements Module, ConfigurableModule {
 		
 		if(!$this->accessToken && $this->wire('process')->className() == 'ProcessModule') {
 			// module config, request authorization
-			if(!$this->wire('user')->isSuperuser()) return false;
-			$code = $this->wire('input')->get('code');
+			$session = $this->wire('session');
+			$input = $this->wire('input');
+			$user = $this->wire('user');
+			if(!$user->isSuperuser()) return false;
+			$code = $input->get('code');
 			if(empty($code)) {
 				// Request authorization from the user
 				$authURL = str_replace('approval_prompt=auto', 'approval_prompt=force', $client->createAuthUrl());
-				if($authURL) $this->wire('session')->redirect($authURL);
+				if($authURL) $session->redirect($authURL);
 				return false;
 			} else {
 				// Exchange auth code for an access token
-				$this->accessToken = $client->authenticate($code);
+				$this->accessToken = $client->fetchAccessTokenWithAuthCode($code);
 				if(self::debug) $this->message("client->authenticate($code) == $this->accessToken");
 				if($this->accessToken) {
 					$this->saveAccessToken();
-					$this->wire('session')->message($this->_('Saved Google authentication credentials'));
-					$this->wire('session')->redirect($this->redirectURL);
+					$session->message($this->_('Saved Google authentication credentials'));
+					$session->redirect($this->redirectURL);
 					return false;
 				}
 			}
@@ -184,6 +319,7 @@ class GoogleClientAPI extends WireData implements Module, ConfigurableModule {
 		$configData = $this->wire('modules')->getModuleConfigData($this);
 		$configData['accessToken'] = $this->accessToken;
 		$configData['authConfigHash'] = md5($this->authConfig);
+		$configData['scopesHash'] = $this->scopesHash();
 		if(empty($configData['refreshToken'])) {
 			$configData['refreshToken'] = $this->getRefreshToken();
 		}
@@ -195,63 +331,13 @@ class GoogleClientAPI extends WireData implements Module, ConfigurableModule {
 	}
 
 	/**
-	 * Get events for given calendar ID (example usage of Google Client)
+	 * Generate the current hash from $this->>scopes, which may be different from $this->scopesHash
 	 * 
-	 * Default behavior is to return the next 10 upcoming events. Use the
-	 * $options argument to adjust this behavior. 
-	 * 
-	 * USAGE EXAMPLE
-	 * =============
-	 * $events = $google->getCalendarEvents($calendarID);
-	 * foreach($events->getItems() as $event) {
-	 *   $start = $event->start->dateTime;
-	 *   if(empty($start)) $start = $event->start->date;
-	 *   echo sprintf("<li>%s (%s)</li>", $event->getSummary(), $start);
-	 * }
-	 * 
-	 * @param string $calendarID
-	 * @param array $options One or more of the following options:
-	 *   maxResults: Max number of results to return (default=10)
-	 *   orderBy: Field to order events by (default=startTime)
-	 *   timeMin: Events starting after this date/time (default=now)
-	 *   timeMax: Events up to this date/time (default=null)
-	 *   q: Text string to search for
-	 * @return \Google_Service_Calendar_Events|bool
+	 * @return string
 	 * 
 	 */
-	public function getCalendarEvents($calendarID = '', array $options = array()) {
-		
-		if(empty($calendarID)) $calendarID = 'primary';
-
-		$defaults = array(
-			'maxResults' => 10,
-			'orderBy' => 'startTime',
-			'singleEvents' => true,
-			'timeMin' => date('c'),
-			'q' => '',
-		);
-
-		$options = array_merge($defaults, $options);
-
-		try {
-			$client = $this->getClient();
-			if(!$client) throw new WireException("The GoogleClientAPI module is not yet configured");
-			$service = new \Google_Service_Calendar($client);
-		} catch(\Exception $e) {
-			$this->error($e->getMessage(), Notice::log);
-			return false;
-		}
-			
-		// make sure times are in format google expects
-		foreach(array('timeMin', 'timeMax') as $t) {
-			if(!isset($options[$t])) continue;
-			$v = $options[$t];
-			if(is_string($v)) $v = ctype_digit("$v") ? (int) $v : strtotime($v);
-			if(is_int($v)) $options[$t] = date('c', $v);
-		}
-	
-		// return the events
-		return $service->events->listEvents($calendarID, $options);
+	protected function scopesHash() {
+		return md5(implode(' ', $this->scopes));
 	}
 
 	/**
@@ -266,12 +352,35 @@ class GoogleClientAPI extends WireData implements Module, ConfigurableModule {
 		$session = $this->wire('session');
 		$input = $this->wire('input');
 		$redirectURL = $this->redirectURL ? $this->redirectURL : $input->httpUrl(true);
-	
+		$user = $this->wire('user');
+		
+		if($this->configUserID && $this->configUserID != $user->id) {
+			$configUser = $this->wire('users')->get((int) $this->configUserID); 
+			$userName = $configUser && $configUser->id ? $configUser->name : "id=$this->configUserID";
+			$this->error(sprintf($this->_('Configuration of this module is limited to user: %s'), $userName)); 
+			return;
+		}
+		
+		/** @var InputfieldText $f */
 		$f = $modules->get('InputfieldText');
 		$f->attr('name', 'applicationName');
 		$f->label = $this->_('Application name');
 		$f->attr('value', $this->applicationName);
 		$f->required = true;
+		$form->add($f);
+	
+		/** @var InputfieldTextarea $f */
+		$f = $modules->get('InputfieldTextarea');
+		$f->attr('name', 'scopes'); 
+		$f->label = $this->_('Scopes (one per line)'); 
+		$f->attr('value', implode("\n", $this->scopes));
+		$f->description = 
+			sprintf($this->_('A list of available scopes can be found [here](%s).'), 'https://developers.google.com/identity/protocols/googlescopes') . ' ' . 
+			$this->_('Note that any changes to scopes will redirect you to Google to confirm the change.'); 
+		$f->notes = '**' . $this->_('Example:') . "**\nhttps://www.googleapis.com/auth/spreadsheets\nhttps://www.googleapis.com/auth/calendar.readonly"; 
+		$f->required = true;
+		
+		if(!strlen($this->scopesHash) && count($this->scopes)) $this->scopesHash = $this->scopesHash();
 		$form->add($f);
 		
 		$f = $modules->get('InputfieldTextarea');
@@ -282,7 +391,7 @@ class GoogleClientAPI extends WireData implements Module, ConfigurableModule {
 		$f->required = true;
 		$f->collapsed = Inputfield::collapsedPopulated;
 		$form->add($f);
-	
+		
 		if(self::debug) {
 			$f = $modules->get('InputfieldTextarea');
 			$f->attr('name', '_accessToken');
@@ -300,10 +409,13 @@ class GoogleClientAPI extends WireData implements Module, ConfigurableModule {
 		}
 	
 		$this->saveAccessToken();
+		
+		$reAuth = $this->authConfig && md5($this->authConfig) != $this->authConfigHash; 
+		if(!$reAuth) $reAuth = $this->scopesHash && $this->scopesHash != $this->scopesHash();
 	
-		if($this->authConfig && md5($this->authConfig) != $this->authConfigHash) {
+		if($reAuth) {
 			// auth config has been changed
-			$this->warning("authConfig has been changed");
+			$this->warning("authConfig or scopes have changed");
 			$session->setFor($this, 'authConfigTest', 1);
 		}
 		
@@ -320,6 +432,7 @@ class GoogleClientAPI extends WireData implements Module, ConfigurableModule {
 			}
 		}
 
+		/** @var InputfieldText $f */
 		$f = $modules->get('InputfieldText');
 		$f->attr('name', 'redirectURL');
 		$f->label = $this->_('Redirect URL (auto-generated)');
@@ -327,6 +440,102 @@ class GoogleClientAPI extends WireData implements Module, ConfigurableModule {
 		$f->attr('value', $redirectURL);
 		$f->notes = $this->_('Note: this is generated automatically and you should not change it.');
 		$form->add($f);
+	
+		/** @var InputfieldRadios $f */
+		$f = $modules->get('InputfieldRadios');
+		$f->attr('name', 'configUserID');
+		$f->label = sprintf($this->_('Only superuser “%s” may view and configure this module?'), $user->name);
+		$f->description = $this->_('Answering “Yes” here ensures that other superusers in the system cannot view your client secret JSON or modify module settings.'); 
+		$f->addOption($this->wire('user')->id, sprintf($this->_('Yes (%s)'), $user->name)); 
+		$f->addOption(0, $this->_('No'));
+		$f->attr('value', $this->configUserID);
+		$form->add($f);
+		
+		$form->add($this->configTests());
+	}
+
+	/**
+	 * @throws WireException
+	 * @throws WirePermissionException
+	 * @return InputfieldFieldset
+	 * 
+	 */
+	protected function configTests() {
+		
+		$modules = $this->wire('modules');
+		$input = $this->wire('input');
+		$session = $this->wire('session');
+		$requiresLabel = $this->_('Requires that at least one of the following URLs is in your “scopes” field above:');
+		
+		$fs = $modules->get('InputfieldFieldset');
+		$fs->attr('name', '_configTests');
+		$fs->label = $this->_('API tests');
+		$fs->collapsed = Inputfield::collapsedYes;
+		$fs->description = $this->_('Once you have everything configured, it’s worthwhile to test APIs here to make sure everything is working with your Google credentials.'); 
+		$fs->icon = 'certificate';
+		$fs->themeOffset = 1; 
+		
+		/** @var InputfieldText $f */
+		$f = $modules->get('InputfieldText');
+		$f->attr('name', '_testCalendar');
+		$f->label = $this->_('Test Google Calendar API');
+		$f->description =
+			$this->_('Open a Google Calendar, go to the settings and get the “Calendar ID” or “Shareable link” URL to the calendar, and paste it below.') . ' ' . 
+			$this->_('This test will show you the next 10 upcoming events in the calendar.');
+		$f->notes = $requiresLabel . 
+			"\nhttps://www.googleapis.com/auth/calendar" . 
+			"\nhttps://www.googleapis.com/auth/calendar.readonly";
+		$f->collapsed = Inputfield::collapsedYes;
+		$fs->add($f);
+		
+		/** @var InputfieldText $f */
+		$f = $modules->get('InputfieldText');
+		$f->attr('name', '_testSheets');
+		$f->label = $this->_('Test Google Sheets API');
+		$f->description =
+			$this->_('Open a Google Sheets spreadsheet and copy/paste the URL from your browser address bar into here.') . ' ' . 
+			$this->_('This test will show you some stats about the spreadsheet.');
+		$f->notes = $requiresLabel . 
+			"\nhttps://www.googleapis.com/auth/spreadsheets" . 
+			"\nhttps://www.googleapis.com/auth/spreadsheets.readonly";
+		$f->collapsed = Inputfield::collapsedYes;
+		$fs->add($f);
+
+		if($input->post('_testCalendar')) {
+			$session->setFor($this, 'testCalendar', $input->post('_testCalendar'));
+		} else if($session->getFor($this, 'testCalendar')) {
+			$calendarUrl = $session->getFor($this, 'testCalendar');
+			$session->removeFor($this, 'testCalendar');
+			$calendar = $this->calendar();
+			$calendar->setCalendar($calendarUrl);
+			$this->warning($calendar->test(), Notice::allowMarkup);
+		}
+	
+		if($input->post('_testSheets')) {
+			$session->setFor($this, 'testSheets', $input->post->url('_testSheets'));
+		} else if($session->getFor($this, 'testSheets')) {
+			$spreadsheetUrl = $session->getFor($this, 'testSheets');
+			$session->removeFor($this, 'testSheets');
+			$sheets = $this->sheets($spreadsheetUrl);
+			$this->warning($sheets->test(), Notice::allowMarkup);
+		}
+		
+		return $fs;
+	}
+	
+	/*** DEPRECATED METHODS ***************************************************************/
+
+	/**
+	 * Get calendar events (deprecated)
+	 *
+	 * @deprecated please use $modules->GoogleClientAPI->calendar($calendarId)->getEvents(...) instead
+	 * @param string $calendarId
+	 * @param array $options
+	 * @return \Google_Service_Calendar_Events|bool
+	 *
+	 */
+	public function getCalendarEvents($calendarId = '', array $options = array()) {
+		return $this->calendar($calendarId)->getEvents($options);
 	}
 
 
