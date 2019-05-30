@@ -25,24 +25,20 @@ in part as a demonstration of this.
 
 ### Step 1: Install module files
 
-Choose either installation via Composer or installation via ZIP file download:
-
-**A. Installation via Composer**: 
-
-In your ProcessWire installation root execute the following command from the terminal:
-
-~~~~~~
-composer require processwire/google-client-api
-~~~~~~
-
-**B. Installation via ZIP file download**
-
 - Download the module’s [ZIP file](https://github.com/ryancramerdesign/GoogleClientAPI/archive/master.zip), 
   unzip and place the files in a new directory named: 
   `/site/modules/GoogleClientAPI/`
+  
 - Download or clone [Google’s PHP client library](https://github.com/googleapis/google-api-php-client)
   and unzip/place files into a directory named:
   `/site/google-api-php-client/`
+
+<!--
+Composer installation no longer supported but may come back if it turns out anyone still using it.
+**Installation via Composer (alternative):** 
+In your ProcessWire installation root execute the following command from the terminal:
+`composer require processwire/google-client-api`
+-->
   
 ### Step 2: Enable in ProcessWire  
 
