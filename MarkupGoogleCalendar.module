@@ -50,7 +50,7 @@ class MarkupGoogleCalendar extends WireData implements Module {
 		return array(
 			'title' => 'Google Calendar Markup',
 			'summary' => 'Renders a calendar with data from Google',
-			'version' => 2,
+			'version' => 3,
 			'license' => 'MPL 2.0',
 			'author' => 'Ryan Cramer',
 			'icon' => 'google',
