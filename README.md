@@ -10,14 +10,11 @@ This package also includes the MarkupGoogleCalendar module, which is useful
 for rendering calendars in your site, but also serves as a good demonstration
 of using the GoogleClientAPI module. 
 
-This module can optionally be installed via Composer and was originally created
-in part as a demonstration of this. 
-
 ### Requirements
 
 - ProcessWire 3.0.123 or newer
 - PHP 5.4 or newer (PHP 7+ recommended)
-- Composer
+- Google PHP client library (install instructions below)
 
 ----------------------
 
