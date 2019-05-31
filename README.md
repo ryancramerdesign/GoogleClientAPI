@@ -14,7 +14,6 @@ of using the GoogleClientAPI module.
 
 - ProcessWire 3.0.123 or newer
 - PHP 5.4 or newer (PHP 7+ recommended)
-- Google PHP client library (install instructions below)
 
 ----------------------
 
@@ -25,11 +24,11 @@ of using the GoogleClientAPI module.
 - Download the module’s [ZIP file](https://github.com/ryancramerdesign/GoogleClientAPI/archive/master.zip), 
   unzip and place the files in a new directory named: 
   `/site/modules/GoogleClientAPI/`
+- Login to your ProcessWire admin and go to: Modules > Refresh. 
+- Click “Install” next to the *GoogleClientAPI* module (which should appear on 
+  the “Site” tab). 
+- You should now be at the module’s configuration screen, remain here for the next step.   
   
-- Download or clone [Google’s PHP client library](https://github.com/googleapis/google-api-php-client)
-  and unzip/place files into a directory named:
-  `/site/google-api-php-client/`
-
 <!--
 Composer installation no longer supported but may come back if it turns out anyone still using it.
 **Installation via Composer (alternative):** 
@@ -37,18 +36,27 @@ In your ProcessWire installation root execute the following command from the ter
 `composer require processwire/google-client-api`
 -->
   
-### Step 2: Enable in ProcessWire  
+### Step 2: Install Google Client library
 
-- Login to your ProcessWire admin and go to: Modules > Refresh. 
-- Click “Install” next to the *GoogleClientAPI* module (which should appear on 
-  the “Site” tab). 
-- You should now be at the module’s configuration screen, remain here for step 3.   
-  
-### Step 3: Enable APIs in your Google account 
+- On the module configuration screen, you should now see a checkbox giving you the option to 
+  install the Google PHP API Client library. 
+- Proceed with installing the library, either by checking the box and clicking Submit, or 
+  downloading and installing yourself to the location it provides. 
+- Note that the library is quite large, so it may take a few minutes to complete installation.  
 
-*This step assumes you are already at your GoogleClientAPI module configuration screen.
-Please note that Google often changes small details in their console control panel so some of 
-the details of the instructions may vary slightly.*
+### Step 3: Configure and enable APIs in Google Console
+
+For this step we'll be working with [Google Console](https://console.developers.google.com) for
+developers and APIs:
+
+> Google Console somtimes changes aspects of their system, so some of the details 
+of the instructions may vary, but the overall concepts should be the same as the instructions provided 
+here. Depending on whether you've previously used Google APIs or not, it may want you to take more 
+steps to enable them. Follow Google's instructions as needed until you are at the point where you can 
+successfully “Create a new project” in Google Console. Sometimes things get confusing here, and 
+Google's instructions can be lacking, so just give yourself a little extra time and know that's normal 
+when working in Google Console — stick with it. Note that we are using the OAuth 2.0 authentication, 
+should you see reference to it in Google Console.
 
 1. Open a new/window tab in your browser, go to [Google Console](https://console.developers.google.com) 
    and login. Google may want you to "Enable and Manage APIs" or accept some terms or the like. 
@@ -87,7 +95,7 @@ the details of the instructions may vary slightly.*
      up in a text editor now if you'd like for the next step (4).
    - Click the "Done" button.
    
-### Step 4: Configure *GoogleClientAPI* module
+### Step 4: Configure the module
 
 *For this step, go back to your ProcessWire admin > Google Client API module settings.*
 
