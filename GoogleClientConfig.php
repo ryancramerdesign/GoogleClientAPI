@@ -2,6 +2,8 @@
 
 /**
  * Interactive configuration and testing methods for GoogleClientAPI module
+ * 
+ * @todo allow pasting in client id and client secret independently? or allow upload of json
  *
  */
 class GoogleClientConfig extends Wire {
@@ -295,7 +297,11 @@ class GoogleClientConfig extends Wire {
 		$f->description = $this->_('Please provide this URL to Google as part of your API configuration.');
 		$f->attr('value', $redirectURL);
 		$f->notes = $this->_('Note: this is generated automatically and you should not change it.');
-		if($module->authConfig) $f->collapsed = Inputfield::collapsedYes;
+		if($module->authConfig) {
+			$f->collapsed = Inputfield::collapsedYes;
+		} else {
+			$this->warning(sprintf($this->_('FYI: Your “Authorized redirect URI” (for Google) is: %s'), "\n$redirectURL"));
+		}
 		$fs->add($f);
 
 		/** @var InputfieldRadios $f */

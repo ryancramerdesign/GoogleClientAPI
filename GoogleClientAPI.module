@@ -376,7 +376,7 @@ class GoogleClientAPI extends WireData implements Module, ConfigurableModule {
 	protected function loadGoogleLibrary() {
 		if(class_exists("\\Google_Client")) return true;
 		$file = $this->getGoogleAutoloadFile();
-		if(is_file($file)) {
+		if(file_exists($file)) {
 			require_once($file);
 			return true;
 		} else {
