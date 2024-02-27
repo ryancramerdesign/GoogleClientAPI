@@ -297,9 +297,18 @@ class MarkupGoogleCalendar extends WireData implements Module {
 		);
 		
 		$options = array_merge($defaults, $options);
-		$calendarID = isset($options['calendarID']) ? $options['calendarID'] : $this->calendarID; 
-		$events = $google->calendar($calendarID)->getEvents($options);
-		
+
+
+		try {
+			// make request to the Google Calendar API
+			$calendarID = isset($options['calendarID']) ? $options['calendarID'] : $this->calendarID; 
+			$events = $google->calendar($calendarID)->getEvents($options);
+
+		} catch (\Exception $e) {
+			// handle errors
+			$events = $e->getMessage();
+		}
+
 		return $events;
 	}
 
